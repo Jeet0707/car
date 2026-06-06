@@ -6,16 +6,37 @@ from typing import Any, Optional
 from upstash_redis import Redis
 
 _redis: Optional[Redis] = None
+_memory_pending: dict[str, dict[str, Any]] = {}
+_memory_state: dict[str, dict[str, Any]] = {}
+
+
+def storage_mode() -> str:
+    if _redis_credentials():
+        return "redis"
+    return "memory"
+
+
+def kv_configured() -> bool:
+    return _redis_credentials()
+
+
+def _redis_credentials() -> tuple[str, str] | None:
+    url = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL")
+    token = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+    if url and token:
+        return url, token
+    return None
 
 
 def get_redis() -> Redis:
     global _redis
     if _redis is None:
-        url = os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL")
-        token = os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
-        if not url or not token:
-            raise RuntimeError("Missing KV_REST_API_URL and KV_REST_API_TOKEN environment variables")
-        _redis = Redis(url=url, token=token)
+        creds = _redis_credentials()
+        if not creds:
+            raise RuntimeError(
+                "Redis not configured. Link Vercel KV or set KV_REST_API_URL + KV_REST_API_TOKEN."
+            )
+        _redis = Redis(url=creds[0], token=creds[1])
     return _redis
 
 
@@ -54,35 +75,53 @@ def apply_command_to_state(state: dict[str, Any], command: dict[str, Any]) -> di
 
 
 def enqueue_command(device_id: str, command: dict[str, Any]) -> None:
-    redis = get_redis()
-    existing_raw = redis.get(state_key(device_id))
-    existing = json.loads(existing_raw) if existing_raw else default_state()
-    next_state = apply_command_to_state(existing, command)
+    if _redis_credentials():
+        redis = get_redis()
+        existing_raw = redis.get(state_key(device_id))
+        existing = json.loads(existing_raw) if existing_raw else default_state()
+        next_state = apply_command_to_state(existing, command)
+        redis.set(pending_key(device_id), json.dumps(command))
+        redis.set(state_key(device_id), json.dumps(next_state))
+        return
 
-    redis.set(pending_key(device_id), json.dumps(command))
-    redis.set(state_key(device_id), json.dumps(next_state))
+    existing = _memory_state.get(device_id, default_state())
+    _memory_state[device_id] = apply_command_to_state(existing, command)
+    _memory_pending[device_id] = command
 
 
 def consume_pending_command(device_id: str) -> Optional[dict[str, Any]]:
-    redis = get_redis()
-    pending_raw = redis.get(pending_key(device_id))
-    if not pending_raw:
+    if _redis_credentials():
+        redis = get_redis()
+        pending_raw = redis.get(pending_key(device_id))
+        if not pending_raw:
+            return None
+
+        redis.delete(pending_key(device_id))
+
+        state_raw = redis.get(state_key(device_id))
+        state = json.loads(state_raw) if state_raw else default_state()
+        state["lastPollAt"] = _now_iso()
+        redis.set(state_key(device_id), json.dumps(state))
+
+        return json.loads(pending_raw)
+
+    pending = _memory_pending.pop(device_id, None)
+    if pending is None:
         return None
 
-    redis.delete(pending_key(device_id))
-
-    state_raw = redis.get(state_key(device_id))
-    state = json.loads(state_raw) if state_raw else default_state()
+    state = _memory_state.get(device_id, default_state())
     state["lastPollAt"] = _now_iso()
-    redis.set(state_key(device_id), json.dumps(state))
-
-    return json.loads(pending_raw)
+    _memory_state[device_id] = state
+    return pending
 
 
 def get_device_state(device_id: str) -> dict[str, Any]:
-    redis = get_redis()
-    state_raw = redis.get(state_key(device_id))
-    return json.loads(state_raw) if state_raw else default_state()
+    if _redis_credentials():
+        redis = get_redis()
+        state_raw = redis.get(state_key(device_id))
+        return json.loads(state_raw) if state_raw else default_state()
+
+    return _memory_state.get(device_id, default_state())
 
 
 def is_online(state: dict[str, Any], window_ms: int = 5000) -> bool:

@@ -5,7 +5,14 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
-from store import consume_pending_command, enqueue_command, get_device_state, is_online
+from store import (
+    consume_pending_command,
+    enqueue_command,
+    get_device_state,
+    is_online,
+    kv_configured,
+    storage_mode,
+)
 
 DEVICE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
@@ -65,8 +72,13 @@ class StatusResponse(BaseModel):
 
 
 @app.get("/")
-def root() -> dict[str, str]:
-    return {"service": "khetix-api", "status": "ok"}
+def root() -> dict[str, str | bool]:
+    return {
+        "service": "khetix-api",
+        "status": "ok",
+        "storage": storage_mode(),
+        "kvConfigured": kv_configured(),
+    }
 
 
 @app.post("/api/command", response_model=OkResponse)
@@ -93,7 +105,7 @@ def post_command(body: CommandBody) -> OkResponse:
         enqueue_command(body.deviceId, command)
     except Exception as exc:
         print(f"command enqueue failed: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to store command") from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return OkResponse()
 
