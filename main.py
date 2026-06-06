@@ -21,10 +21,16 @@ app.add_middleware(
 )
 
 
-def verify_api_key(x_api_key: Annotated[Optional[str], Header()] = None) -> None:
-    expected = os.environ.get("API_KEY")
-    if not expected or x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def verify_api_key(x_api_key: Annotated[Optional[str], Header(alias="x-api-key")] = None) -> None:
+    expected = os.environ.get("API_KEY", "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Server API_KEY is not configured in Vercel environment variables",
+        )
+    received = (x_api_key or "").strip()
+    if received != expected:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def validate_device_id(device_id: str) -> str:
@@ -72,8 +78,12 @@ class StatusResponse(BaseModel):
 
 
 @app.get("/")
-def root() -> dict[str, str]:
-    return {"service": "khetix-api", "status": "ok"}
+def root() -> dict[str, str | bool]:
+    return {
+        "service": "khetix-api",
+        "status": "ok",
+        "apiKeyConfigured": bool(os.environ.get("API_KEY", "").strip()),
+    }
 
 
 @app.post("/api/command", dependencies=[Depends(verify_api_key)], response_model=OkResponse)

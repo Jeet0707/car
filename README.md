@@ -33,7 +33,7 @@ backend/
 Send a command from the Flutter app.
 
 ```bash
-curl -X POST https://YOUR_APP.vercel.app/api/command \
+curl -X POST https://car-v5lm.vercel.app/api/command \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_KEY" \
   -d '{"deviceId":"khetix-001","cmd":"1"}'
@@ -42,7 +42,7 @@ curl -X POST https://YOUR_APP.vercel.app/api/command \
 Servo:
 
 ```bash
-curl -X POST https://YOUR_APP.vercel.app/api/command \
+curl -X POST https://car-v5lm.vercel.app/api/command \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_KEY" \
   -d '{"deviceId":"khetix-001","cmd":"servo","angle":90}'
@@ -55,7 +55,7 @@ Commands: `1` (cutter on), `2` (cutter off), `servo` (with `angle` 0–180).
 ESP8266 polls every ~300 ms. Returns pending command once, then clears it.
 
 ```bash
-curl "https://YOUR_APP.vercel.app/api/poll?deviceId=khetix-001" \
+curl "https://car-v5lm.vercel.app/api/poll?deviceId=khetix-001" \
   -H "x-api-key: YOUR_KEY"
 ```
 
@@ -70,7 +70,7 @@ Responses:
 Optional UI sync for the Flutter app.
 
 ```bash
-curl "https://YOUR_APP.vercel.app/api/status?deviceId=khetix-001" \
+curl "https://car-v5lm.vercel.app/api/status?deviceId=khetix-001" \
   -H "x-api-key: YOUR_KEY"
 ```
 
@@ -120,7 +120,7 @@ Build with dart-defines (do not hardcode secrets in source for production):
 
 ```bash
 flutter run \
-  --dart-define=KHETIX_API_BASE=https://YOUR_APP.vercel.app \
+  --dart-define=KHETIX_API_BASE=https://car-v5lm.vercel.app \
   --dart-define=KHETIX_DEVICE_ID=khetix-001 \
   --dart-define=KHETIX_API_KEY=YOUR_KEY
 ```
