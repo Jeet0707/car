@@ -1,8 +1,7 @@
-import os
 import re
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
@@ -17,20 +16,8 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "x-api-key"],
+    allow_headers=["Content-Type"],
 )
-
-
-def verify_api_key(x_api_key: Annotated[Optional[str], Header(alias="x-api-key")] = None) -> None:
-    expected = os.environ.get("API_KEY", "").strip()
-    if not expected:
-        raise HTTPException(
-            status_code=503,
-            detail="Server API_KEY is not configured in Vercel environment variables",
-        )
-    received = (x_api_key or "").strip()
-    if received != expected:
-        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def validate_device_id(device_id: str) -> str:
@@ -78,15 +65,11 @@ class StatusResponse(BaseModel):
 
 
 @app.get("/")
-def root() -> dict[str, str | bool]:
-    return {
-        "service": "khetix-api",
-        "status": "ok",
-        "apiKeyConfigured": bool(os.environ.get("API_KEY", "").strip()),
-    }
+def root() -> dict[str, str]:
+    return {"service": "khetix-api", "status": "ok"}
 
 
-@app.post("/api/command", dependencies=[Depends(verify_api_key)], response_model=OkResponse)
+@app.post("/api/command", response_model=OkResponse)
 def post_command(body: CommandBody) -> OkResponse:
     command: dict[str, Any]
 
@@ -117,7 +100,6 @@ def post_command(body: CommandBody) -> OkResponse:
 
 @app.get(
     "/api/poll",
-    dependencies=[Depends(verify_api_key)],
     response_model=Union[PollEmptyResponse, PollCutterResponse, PollServoResponse],
 )
 def get_poll(deviceId: str = Query(...)) -> Union[PollEmptyResponse, PollCutterResponse, PollServoResponse]:
@@ -141,7 +123,7 @@ def get_poll(deviceId: str = Query(...)) -> Union[PollEmptyResponse, PollCutterR
     return PollEmptyResponse()
 
 
-@app.get("/api/status", dependencies=[Depends(verify_api_key)], response_model=StatusResponse)
+@app.get("/api/status", response_model=StatusResponse)
 def get_status(deviceId: str = Query(...)) -> StatusResponse:
     validate_device_id(deviceId)
 
